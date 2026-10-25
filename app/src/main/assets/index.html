@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Study Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#000;--card:#161616;--card2:#222;--ink:#f3f3f3;--mute:#9a9a9a;--line:#2c2c2c;--red:#ff2b2b;--study:#8a94ff;--work:#ff9560;--free:#5fcf8c;--college:#8f9ab3;--routine:#4a4a4a}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+main{max-width:520px;margin:0 auto;padding:14px 14px 90px}
+h1{font-family:"Permanent Marker",cursive;color:var(--red);text-align:center;font-size:1.7rem;font-weight:400;margin:6px 0 14px}
+.view{display:none}.view.on{display:block}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#0b0b0b;border-top:2px solid var(--red);padding-bottom:env(safe-area-inset-bottom,0px);z-index:20}
+nav button{flex:1;border:0;background:none;color:var(--mute);font:600 .95rem system-ui,sans-serif;padding:15px 0}
+nav button.on{color:#fff;background:var(--red)}
+.now{background:#1c0606;border:2px solid var(--red);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 0 14px rgba(255,0,0,.35)}
+.now small{color:#ff9d9d;font-size:.8rem}.now .what{font-size:1.4rem;font-weight:800;line-height:1.2;margin:4px 0}.now .left{font-size:.92rem;color:#ddd}
+.bar{height:6px;border-radius:3px;background:#3a1010;margin-top:10px;overflow:hidden}.bar i{display:block;height:100%;background:var(--red);width:0}
+.tabs{display:flex;gap:6px;padding:6px 0;overflow-x:auto}
+.tabs button{flex:1 0 auto;min-width:44px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:600 .85rem system-ui,sans-serif;padding:9px 6px;border-radius:10px}
+.tabs button[aria-selected="true"]{background:var(--red);border-color:var(--red);color:#fff}
+.tabs button.today:not([aria-selected="true"]){border-color:var(--red);color:var(--red)}
+.meta{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 2px 10px;font-size:.88rem;color:var(--mute)}
+.late{display:flex;align-items:center;gap:8px;color:var(--ink)}
+input[type=checkbox]{width:22px;height:22px;accent-color:var(--red)}
+ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+#list li{display:grid;grid-template-columns:76px 1fr auto;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--routine);border-radius:10px;padding:11px 12px}
+#list li.c{border-left-color:var(--college)}#list li.s1,#list li.s2,#list li.s{border-left-color:var(--study)}#list li.w{border-left-color:var(--work)}#list li.f{border-left-color:var(--free)}
+#list .t{font-size:.76rem;color:var(--mute);font-weight:600;line-height:1.25}#list .l{font-weight:600;font-size:.95rem}
+#list li.past{opacity:.45}#list li.cur{outline:2px solid var(--red);outline-offset:1px}#list li.done .l{text-decoration:line-through;color:var(--mute)}
+.sum{margin:12px 2px 0;font-size:.85rem;color:var(--mute)}
+.add{display:flex;gap:10px;margin-bottom:16px}
+.add input{flex:1;min-width:0;padding:11px;border:2px solid var(--red);background:#333;color:#fff;border-radius:6px;font:16px "Permanent Marker",cursive}
+.add button{padding:11px 14px;background:var(--red);color:#fff;border:0;border-radius:6px;font:16px "Permanent Marker",cursive}
+#tasks li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px;background:var(--card2);border-left:5px solid var(--red);border-radius:6px}
+#tasks li.completed{opacity:.55;text-decoration:line-through;border-left-color:#555}
+#tasks li span{flex:1;word-break:break-word;font-family:"Permanent Marker",cursive}
+#tasks .acts{display:flex;gap:5px}#tasks .acts button{border:0;color:#fff;padding:6px 10px;border-radius:5px;font:13px "Permanent Marker",cursive}
+#tasks .ok{background:#0a8a0a}#tasks .del{background:#555}
+.empty{color:var(--mute);text-align:center;margin-top:20px;font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<section class="view on" id="viewTime">
+<h1>Study Planner</h1>
+<div class="now"><small id="nowSmall"></small><div class="what" id="nowWhat"></div><div class="left" id="nowLeft"></div><div class="bar"><i id="nowBar"></i></div></div>
+<div class="tabs" id="tabs" role="tablist"></div>
+<div class="meta"><span id="dayInfo"></span><label class="late" id="lateWrap"><input type="checkbox" id="late"> College ends at 4:30</label></div>
+<ul id="list"></ul>
+<div class="sum" id="sum"></div>
+</section>
+<section class="view" id="viewTodo">
+<h1>Hell-hound To-Do List</h1>
+<div class="add"><input type="text" id="taskInput" placeholder="Add a new task..."><button id="addBtn">Add Task</button></div>
+<ul id="tasks"></ul>
+<div class="empty" id="empty">No tasks yet. Add your first one.</div>
+</section>
+</main>
+<nav><button id="navTime" class="on">Timetable</button><button id="navTodo">To-do</button></nav>
+<script>
+function get(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function set(k,v){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}}
+function show(w){document.getElementById("viewTime").className="view"+(w==="time"?" on":"");document.getElementById("viewTodo").className="view"+(w==="todo"?" on":"");document.getElementById("navTime").className=w==="time"?"on":"";document.getElementById("navTodo").className=w==="todo"?"on":"";set("sp_view",w)}
+document.getElementById("navTime").onclick=function(){show("time")};
+document.getElementById("navTodo").onclick=function(){show("todo")};
+
+/* ---------- Timetable ---------- */
+var NORMAL=["06:15-07:05|r|Wake up, get ready, breakfast","07:05-07:15|r|Commute","07:15-13:30|c|College","13:30-14:00|r|Commute home","14:00-14:45|r|Lunch and rest","14:45-16:45|s1|","16:45-17:45|f|Free time","17:45-18:00|r|Get ready","18:00-19:00|w|Workout","19:00-20:00|r|Shower and dinner","20:00-21:30|s2|","21:30-23:30|f|Free time","23:30-23:59|r|Wind down and sleep"];
+var LATE=["06:15-07:15|r|Wake up, get ready, commute","07:15-16:30|c|College","16:30-17:45|r|Commute, snack, rest","17:45-18:00|r|Get ready","18:00-19:00|w|Workout","19:00-20:00|r|Shower and dinner","20:00-21:30|s1|","21:30-21:45|r|Break","21:45-23:15|s2|","23:15-23:59|f|Free time, then sleep"];
+var SUN=["07:00-09:00|r|Wake up, breakfast, relax","09:00-11:30|s|Study: revision and PLSQL","11:30-13:00|f|Free time","13:00-14:30|r|Lunch and rest","14:30-16:00|s|Study: practicals","16:00-18:00|f|Free time, sports, NSS or Cultural","18:00-19:00|w|Workout","19:00-20:00|r|Dinner","20:00-23:30|f|Free time, plan next week","23:30-23:59|r|Wind down and sleep"];
+var SUBJ={1:["C++","Web Designing"],2:["Python","Assembly Language"],3:["Web Programming","PLSQL"],4:["C++ practicals","Python"],5:["Web Designing","Assembly Language"],6:["Electives: Leadership, EVS, Hindi/Marathi","Web Programming practice"]};
+var NAMES=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+function iso(d){return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate()}
+function fmt(m){var h=Math.floor(m/60),mm=m%60,ap=h>=12?"PM":"AM";h=h%12||12;return h+":"+(mm<10?"0":"")+mm+" "+ap}
+function mins(s){var p=s.split(":");return +p[0]*60+ +p[1]}
+var today=new Date(),dowToday=today.getDay();
+var monday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-((dowToday+6)%7));
+var sel=(dowToday+6)%7;
+function dateOf(i){return new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+i)}
+function build(i){
+  var dow=(i+1)%7,key=iso(dateOf(i)),late=get("late:"+key)==="1";
+  var tpl=dow===0?SUN:(late?LATE:NORMAL),sub=SUBJ[dow]||[];
+  return tpl.map(function(r,n){
+    var p=r.split("|"),t=p[0].split("-"),lab=p[2];
+    if(p[1]==="s1")lab="Study: "+sub[0];
+    if(p[1]==="s2")lab="Study: "+sub[1];
+    return{s:mins(t[0]),e:mins(t[1]),type:p[1],label:lab,id:key+":"+n+(late?"L":"")};
+  });
+}
+function render(){
+  var items=build(sel),isToday=sel===(dowToday+6)%7,now=new Date(),m=now.getHours()*60+now.getMinutes(),dow=(sel+1)%7;
+  document.getElementById("lateWrap").style.display=dow===0?"none":"flex";
+  document.getElementById("late").checked=get("late:"+iso(dateOf(sel)))==="1";
+  document.getElementById("dayInfo").textContent=dateOf(sel).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"short"});
+  var ul=document.getElementById("list");ul.innerHTML="";
+  var total=0,done=0;
+  items.forEach(function(it){
+    var li=document.createElement("li"),chk=it.type[0]==="s"||it.type==="w";
+    li.className=it.type;
+    if(isToday&&m>=it.e)li.classList.add("past");
+    if(isToday&&m>=it.s&&m<it.e)li.classList.add("cur");
+    var t=document.createElement("div");t.className="t";t.textContent=fmt(it.s)+" to "+fmt(it.e);
+    var l=document.createElement("div");l.className="l";l.textContent=it.label;
+    li.appendChild(t);li.appendChild(l);
+    if(chk){
+      total++;var cb=document.createElement("input");cb.type="checkbox";
+      cb.checked=get("done:"+it.id)==="1";if(cb.checked){done++;li.classList.add("done")}
+      cb.onchange=function(){set("done:"+it.id,cb.checked?"1":null);render()};
+      li.appendChild(cb);
+    }else li.appendChild(document.createElement("span"));
+    ul.appendChild(li);
+  });
+  document.getElementById("sum").textContent=done+" of "+total+" study and workout blocks done";
+  nowCard(items,isToday,m);
+}
+function nowCard(items,isToday,m){
+  var sm=document.getElementById("nowSmall"),w=document.getElementById("nowWhat"),l=document.getElementById("nowLeft"),b=document.getElementById("nowBar");
+  if(!isToday){sm.textContent="Viewing "+NAMES[sel];w.textContent="Pick today to see what’s next";l.textContent="";b.style.width="0";return}
+  var cur=null,nxt=null;
+  items.forEach(function(it){if(m>=it.s&&m<it.e)cur=it;else if(it.s>m&&!nxt)nxt=it});
+  if(cur){sm.textContent="Now";w.textContent=cur.label;var left=cur.e-m;
+    l.textContent=(left>=60?Math.floor(left/60)+" h ":"")+(left%60)+" min left, then "+(nxt?nxt.label:"sleep");
+    b.style.width=Math.round((m-cur.s)/(cur.e-cur.s)*100)+"%"}
+  else if(nxt){sm.textContent="Up next at "+fmt(nxt.s);w.textContent=nxt.label;l.textContent="Rest until then";b.style.width="0"}
+  else{sm.textContent="Day finished";w.textContent="Good night";l.textContent="See you tomorrow";b.style.width="100%"}
+}
+var tabs=document.getElementById("tabs");
+NAMES.forEach(function(n,i){
+  var bt=document.createElement("button");bt.textContent=n;bt.setAttribute("role","tab");
+  if(i===(dowToday+6)%7)bt.className="today";
+  bt.onclick=function(){sel=i;sync();render()};tabs.appendChild(bt);
+});
+function sync(){Array.prototype.forEach.call(tabs.children,function(b,i){b.setAttribute("aria-selected",i===sel?"true":"false")})}
+document.getElementById("late").onchange=function(e){set("late:"+iso(dateOf(sel)),e.target.checked?"1":null);render()};
+sync();render();setInterval(render,30000);
+
+/* ---------- To-do ---------- */
+var tasks=[];try{tasks=JSON.parse(get("hh_tasks")||"[]")}catch(e){tasks=[]}
+var input=document.getElementById("taskInput");
+function saveT(){set("hh_tasks",JSON.stringify(tasks))}
+function renderT(){
+  var ul=document.getElementById("tasks");ul.innerHTML="";
+  document.getElementById("empty").style.display=tasks.length?"none":"block";
+  tasks.forEach(function(t,i){
+    var li=document.createElement("li");if(t.done)li.className="completed";
+    var sp=document.createElement("span");sp.textContent=t.text;
+    var ac=document.createElement("div");ac.className="acts";
+    var ok=document.createElement("button");ok.className="ok";ok.textContent=t.done?"Undo":"Complete";
+    ok.onclick=function(){t.done=!t.done;saveT();renderT()};
+    var dl=document.createElement("button");dl.className="del";dl.textContent="Delete";
+    dl.onclick=function(){tasks.splice(i,1);saveT();renderT()};
+    ac.appendChild(ok);ac.appendChild(dl);li.appendChild(sp);li.appendChild(ac);ul.appendChild(li);
+  });
+}
+function addTask(){
+  var v=input.value.trim();
+  if(!v){input.placeholder="Write something first!";input.focus();return}
+  tasks.push({text:v,done:false});input.value="";input.placeholder="Add a new task...";saveT();renderT();
+}
+document.getElementById("addBtn").onclick=addTask;
+input.addEventListener("keypress",function(e){if(e.key==="Enter")addTask()});
+renderT();
+if(get("sp_view")==="todo")show("todo");
+</script>
+</body>
+</html>
