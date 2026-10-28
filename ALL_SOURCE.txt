@@ -1,0 +1,490 @@
+STUDY PLANNER: ALL SOURCE FILES IN ONE FILE
+Each file starts with a line "===== FILE: path =====".
+Binary files (the app icon PNG) are not included.
+
+===== FILE: .github/workflows/build.yml =====
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: app/debug.keystore
+          key: debug-keystore-v1
+      - name: Create signing key if missing
+        run: test -f app/debug.keystore || keytool -genkeypair -keystore app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Study Planner"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk StudyPlanner.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyPlanner-apk
+          path: StudyPlanner.apk
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Study Planner build ${{ github.run_number }}
+          files: StudyPlanner.apk
+
+===== FILE: README.md =====
+# Study Planner
+
+Android app with two tabs: a weekly study timetable and a to-do list.
+
+Every push builds the APK in GitHub Actions. Download `StudyPlanner.apk` from the Releases page.
+
+===== FILE: app/build.gradle =====
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.studyplanner.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.studyplanner.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 8
+        versionName "2.6"
+    }
+
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+===== FILE: app/src/main/AndroidManifest.xml =====
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Study Planner"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver android:name=".ReminderReceiver" android:exported="false" />
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
+
+===== FILE: app/src/main/assets/index.html =====
+<!doctype html>
+<html lang='en' data-theme='dark'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1, viewport-fit=cover'>
+<title>Study Planner</title>
+<link href='https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap' rel='stylesheet'>
+<style>
+:root{--bg:#0d0d12;--cd:#17171f;--ln:#272733;--ink:#f2f2f6;--mu:#9b9bab;--ac:#ff3b3b;--ok:#3ddc97}
+[data-theme=light]{--bg:#f4f4f8;--cd:#fff;--ln:#e2e2ea;--ink:#15151c;--mu:#6b6b7b;--ac:#e5252a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:14px 14px 96px}
+h1{font:400 1.6rem 'Permanent Marker',cursive;color:var(--ac);margin:6px 0 4px}
+.sub2,.mute{color:var(--mu)}.sm{font-size:.82rem}.ct{text-align:center}.red{color:var(--ac)}
+.card{background:var(--cd);border:1px solid var(--ln);border-radius:14px;padding:14px;margin:10px 0}.tap:active{opacity:.7}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}
+.now{background:#2a0a0c;color:#fff;border:2px solid var(--ac);border-radius:16px;padding:16px;margin:12px 0}.what{font-size:1.35rem;font-weight:800;margin:4px 0}
+.pb{height:8px;border-radius:4px;background:var(--ln);margin:8px 0;overflow:hidden}.pb i{display:block;height:100%;border-radius:4px}.pb.w{background:#5a1a1d}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{background:var(--cd);border:1px solid var(--ln);border-radius:20px;padding:6px 10px;font-size:.82rem}
+.tabs{display:flex;gap:6px;margin:10px 0;overflow-x:auto}.tabs button{flex:1;border:1px solid var(--ln);background:var(--cd);color:var(--ink);border-radius:10px;padding:9px 6px;font:600 .85rem system-ui}.tabs .on{background:var(--ac);border-color:var(--ac);color:#fff}.tabs .td:not(.on){border-color:var(--ac);color:var(--ac)}
+.late{display:flex;gap:8px;align-items:center;margin:6px 0}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--ln);border-radius:8px;padding:10px;width:100%;margin-top:8px}input[type=checkbox]{width:22px;height:22px;margin:0;accent-color:var(--ac);flex:none}.row input,.row select{margin-top:0}textarea{min-height:110px}
+.btn{border:0;background:var(--ac);color:#fff;border-radius:10px;padding:11px 14px;font:700 .9rem system-ui;flex:1}.btn.g{background:var(--ln);color:var(--ink)}.btn.full{width:100%;margin-top:8px}.btn.sm{padding:7px 10px;flex:none}
+.tl{list-style:none;margin:0;padding:0;display:grid;gap:8px}.tl li{display:grid;grid-template-columns:70px 1fr auto;gap:10px;align-items:center;background:var(--cd);border:1px solid var(--ln);border-left:5px solid #555;border-radius:10px;padding:10px}.tl .t{font-size:.72rem;color:var(--mu);font-weight:600}.tl .l{font-weight:600}
+.tl .c{border-left-color:#8f9ab3}.tl .s,.tl .s1,.tl .s2{border-left-color:#8a94ff}.tl .w{border-left-color:#ff9560}.tl .f{border-left-color:var(--ok)}.tl .past{opacity:.45}.tl .cur{outline:2px solid var(--ac)}.tl .done .l{text-decoration:line-through;color:var(--mu)}
+.sum{color:var(--mu);font-size:.85rem;margin:10px 2px}.big{font-size:3rem;font-weight:800;text-align:center;margin:6px 0}
+.gh{margin:12px 0 2px;color:var(--mu);font-size:.8rem;font-weight:700}.chk{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--ln)}.chk span{flex:1}.x,.back{background:none;border:0;color:var(--mu);font-size:1rem}.back{color:var(--ac);font-weight:700;padding:6px 0}
+.task{display:flex;justify-content:space-between;align-items:center;gap:8px;border-left:5px solid var(--ok)}.task.pH{border-left-color:var(--ac)}.task.pM{border-left-color:#ffb020}.task.dn{opacity:.5}.acts{display:flex;gap:6px}
+.chart{display:flex;gap:6px;align-items:flex-end;height:96px;margin-top:10px}.chart div{flex:1;text-align:center;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}.chart i{display:block;width:100%;background:var(--ac);border-radius:4px 4px 0 0;min-height:2px}.chart small{font-size:.65rem;color:var(--mu)}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--cd);border-top:2px solid var(--ac);padding-bottom:env(safe-area-inset-bottom,0)}nav button{flex:1;border:0;background:none;color:var(--mu);padding:8px 0;font:600 .7rem system-ui}nav button b{display:block;font-size:1.25rem}nav .on{color:var(--ac)}
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:.2s;font-size:.9rem}#toast.on{opacity:1}
+.cf{background:none;border:1px solid var(--ln);border-radius:8px;color:var(--ink);padding:4px 8px;font-size:1rem}.w2{font-size:1.15rem;font-weight:700;margin:6px 0}hr{border:0;border-top:1px solid var(--ln);margin:12px 0}.btn.good{background:var(--ok);color:#000}.btn.bad{background:#b3261e}</style>
+</head>
+<body>
+<main id='m'></main>
+<nav id='nav'></nav>
+<div id='toast'></div>
+<script>
+const $=i=>document.getElementById(i),pad=n=>(n<10?'0':'')+n,iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt=m=>{let h=Math.floor(m/60),ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+pad(m%60)+' '+ap};
+const mins=s=>{const p=s.split(':');return +p[0]*60+ +p[1]};
+const daysTo=ds=>{const p=ds.split('-'),n=new Date();n.setHours(0,0,0,0);return Math.round((new Date(+p[0],+p[1]-1,+p[2])-n)/864e5)};
+const dl=d=>d<0?'Passed':d===0?'Today':d===1?'Tomorrow':'In '+d+' days';
+let S;try{S=JSON.parse(localStorage.getItem('sp2')||'{}')}catch(e){S={}}
+function fix(){['done','late','mods','topics','notes','att','exam','focus','wk','conf','err','rv'].forEach(k=>S[k]=S[k]||{});S.tasks=S.tasks||[];S.cards=S.cards||[];S.qz=S.qz||[];S.aid=S.aid||{};S.defs=S.defs||{};S.fmt=S.fmt||{};S.hrs=S.hrs||3;S.theme=S.theme||'dark';S.rem=S.rem||{on:false,lead:10}}fix();
+const save=()=>{try{localStorage.setItem('sp2',JSON.stringify(S))}catch(e){}};
+function theme(){let t=S.theme;if(t==='auto')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}theme();
+function toast(t){const e=$('toast');e.textContent=t;e.className='on';setTimeout(()=>e.className='',2600)}
+const NORMAL=['06:15-07:05|r|Wake up, get ready, breakfast','07:05-07:15|r|Commute','07:15-13:30|c|College','13:30-14:00|r|Commute home','14:00-14:45|r|Lunch and rest','14:45-16:45|s1|','16:45-17:45|f|Free time','17:45-18:00|r|Get ready','18:00-19:00|w|Workout','19:00-20:00|r|Shower and dinner','20:00-21:30|s2|','21:30-23:30|f|Free time','23:30-23:59|r|Wind down and sleep'];
+const LATE=['06:15-07:15|r|Wake up, get ready, commute','07:15-16:30|c|College','16:30-17:45|r|Commute, snack, rest','17:45-18:00|r|Get ready','18:00-19:00|w|Workout','19:00-20:00|r|Shower and dinner','20:00-21:30|s1|','21:30-21:45|r|Break','21:45-23:15|s2|','23:15-23:59|f|Free time, then sleep'];
+const SUN=['07:00-09:00|r|Wake up, breakfast, relax','09:00-11:30|s|Study: revision and PLSQL','11:30-13:00|f|Free time','13:00-14:30|r|Lunch and rest','14:30-16:00|s|Study: practicals','16:00-18:00|f|Free time, sports, NSS or Cultural','18:00-19:00|w|Workout','19:00-20:00|r|Dinner','20:00-23:30|f|Free time, plan next week','23:30-23:59|r|Wind down and sleep'];
+const SUBJ={1:['C++','Web Designing'],2:['Python','Assembly Language'],3:['Web Programming','PLSQL'],4:['C++ practicals','Python'],5:['Web Designing','Assembly Language'],6:['Electives: Leadership, EVS, Hindi/Marathi','Web Programming practice']};
+const NAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const mon=()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate()-((t.getDay()+6)%7))};
+const dateOf=i=>{const m=mon();return new Date(m.getFullYear(),m.getMonth(),m.getDate()+i)};
+function build(i){const dow=(i+1)%7,key=iso(dateOf(i)),late=S.late[key],sb=SUBJ[dow]||[];return (dow===0?SUN:late?LATE:NORMAL).map((r,n)=>{const p=r.split('|'),t=p[0].split('-');let l=p[2];if(p[1]==='s1')l='Study: '+sb[0];if(p[1]==='s2')l='Study: '+sb[1];return{s:mins(t[0]),e:mins(t[1]),t:p[1],l,k:p[1][0]==='s'||p[1]==='w',id:key+':'+n+(late?'L':'')}})}
+const SUBS=[
+['cpp','C++','Object Oriented Programming using C++','#ff6b6b',[['Module 1','Object oriented methodology;Classes and objects;Constructors and destructors;Inheritance'],['Module 2','Polymorphism;Virtual functions;Exception handling;Working with files']]],
+['web','Web Designing','HTML5, CSS, JavaScript, jQuery, JSON','#4da3ff',[['Module 1','HTML5 basics, text, lists, links;Style sheets and text formatting;Graphics;Page layout, navigation, tables;User forms;Sound and video'],['Module 2','JavaScript basics and operators;JavaScript objects and events;jQuery;JSON']]],
+['py','Python (Minor)','Programming with Python','#ffd24d',[['Module 1','Overview and Anaconda setup;Basics and data types;Input and output;Control statements and operators'],['Module 2','Modules and functions;Strings and lists;Tuples and dictionaries;Arrays and NumPy;File handling;Exception handling']]],
+['asm','Assembly Language','8085 Assembly Language Programming','#b48cff',[['Module 1','Memory location operations;Simple assembly programs;Packing and unpacking;Register operations;Multiple memory locations'],['Module 2','Calculations on memory locations;Programs on memory locations;String operations;More memory calculations;BCD number operations']]],
+['wp','Web Programming','JavaScript, XML, PHP, MySQL, Bootstrap','#3ddc97',[['Module 1','JavaScript objects;Window and document objects, cookies;XML with DTD, CSS, XSL;PHP math scripts;PHP forms, arrays, files;PHP sessions, cookies, filters'],['Module 2','PHP and MySQL database;Insert and display records;Update and delete rows;User authentication page;Cookies and sessions;Bootstrap grid;Bootstrap navbar']]],
+['pl','PL/SQL','PL/SQL Practical','#ff9560',[['Module 1','PL/SQL basics;Control structures;Conditional statements;Cursors;Collections and composite types'],['Module 2','Procedures;Functions;Triggers;Exception handling;Packages']]],
+['lead','Leadership','Open elective','#8f9ab3',[]],['evs','EVS','Environmental Management','#8f9ab3',[]],['lang','Hindi/Marathi','Language course','#8f9ab3',[]]];
+const items=s=>{const a=[];s[4].forEach((g,gi)=>g[1].split(';').forEach((t,ti)=>a.push([gi+'.'+ti,t,g[0]])));(S.topics[s[0]]||[]).forEach((t,i)=>a.push(['c'+i,t,'Mine']));return a};
+const prog=s=>{const a=items(s),m=S.mods[s[0]]||{};return[a.filter(x=>m[x[0]]).length,a.length]};
+const bar=(d,t,c)=>`<div class='pb'><i style='width:${t?d/t*100:0}%;background:${c}'></i></div>`;
+const exams=()=>SUBS.filter(s=>S.exam[s[0]]).map(s=>[s,daysTo(S.exam[s[0]])]).filter(x=>x[1]>=0).sort((a,b)=>a[1]-b[1]);
+function streak(){const d=new Date();let n=0;if(!S.wk[iso(d)])d.setDate(d.getDate()-1);while(S.wk[iso(d)]){n++;d.setDate(d.getDate()-1)}return n}
+let tab='today',sub=0,sel=(new Date().getDay()+6)%7;
+function rToday(){const n=new Date(),m=n.getHours()*60+n.getMinutes(),ti=(n.getDay()+6)%7,its=build(sel),isT=sel===ti,h=n.getHours();let cur,nxt;its.forEach(x=>{if(m>=x.s&&m<x.e)cur=x;else if(x.s>m&&!nxt)nxt=x});
+const nc=!isT?`<small>Viewing ${NAMES[sel]}</small><div class='what'>Pick today to see what’s next</div>`:cur?`<small>Now</small><div class='what'>${esc(cur.l)}</div><div>${cur.e-m>=60?Math.floor((cur.e-m)/60)+' h ':''}${(cur.e-m)%60} min left${nxt?', then '+esc(nxt.l):''}</div><div class='pb w'><i style='width:${Math.round((m-cur.s)/(cur.e-cur.s)*100)}%;background:#fff'></i></div>`:nxt?`<small>Up next at ${fmt(nxt.s)}</small><div class='what'>${esc(nxt.l)}</div>`:`<small>Day finished</small><div class='what'>Good night</div>`;
+const ex=exams()[0];let d=0,t=0;its.forEach(x=>{if(x.k){t++;if(S.done[x.id])d++}});
+return `<h1>${h<12?'Good morning':h<17?'Good afternoon':'Good evening'}</h1><div class='sub2'>${n.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'})}</div><div class='now'>${nc}</div>${rvCard()}<div class='chips'><span class='chip' data-a='rev'>\ud83c\udccf ${dueCards().length} cards due</span><span class='chip'>🔥 ${streak()}-day workout streak</span><span class='chip'>⏱ ${S.focus[iso(n)]||0} min focus today</span>${ex?`<span class='chip'>📝 ${esc(ex[0][1])}: ${dl(ex[1])}</span>`:''}</div><div class='tabs'>${NAMES.map((x,i)=>`<button data-a='day' data-i='${i}' class='${i===sel?'on':''} ${i===ti?'td':''}'>${x}</button>`).join('')}</div>${(sel+1)%7?`<label class='late'><input type='checkbox' data-in='late' ${S.late[iso(dateOf(sel))]?'checked':''}> College ends at 4:30 on this day</label>`:''}<ul class='tl'>${its.map(x=>{const dn=S.done[x.id];return `<li class='${x.t} ${isT&&m>=x.e?'past':''} ${isT&&x===cur?'cur':''} ${dn?'done':''}'><div class='t'>${fmt(x.s)}<br>${fmt(x.e)}</div><div class='l'>${esc(x.l)}</div>${x.k?`<input type='checkbox' data-in='tick' data-id='${x.id}' ${x.t==='w'?`data-w='1'`:''} ${dn?'checked':''}>`:'<span></span>'}</li>`}).join('')}</ul><div class='sum'>${d} of ${t} study and workout blocks done</div>`}
+function rSubjects(){const ex=exams();return `<h1>Subjects</h1>${planHTML()}${ex.length?`<div class='card'><b>Exam countdown</b>${ex.map(x=>`<div class='row'><span>${esc(x[0][1])}</span><b>${dl(x[1])}</b></div>`).join('')}</div>`:`<div class='card mute'>Open a subject to set its exam date.</div>`}${SUBS.map(s=>{const[d,t]=prog(s),a=S.att[s[0]];return `<div class='card tap' data-a='sub' data-id='${s[0]}'><div class='row'><b style='color:${s[3]}'>${esc(s[1])}</b><span class='mute'>${d}/${t}</span></div><div class='mute sm'>${esc(s[2])}</div>${bar(d,t,s[3])}<div class='sm mute'>${a&&a.t?'Attendance '+Math.round(a.a/a.t*100)+'%':'Attendance not set'}${S.exam[s[0]]?', exam: '+dl(daysTo(S.exam[s[0]])).toLowerCase():''}</div></div>`}).join('')}`}
+function rSub(){const s=SUBS.find(x=>x[0]===sub),[d,t]=prog(s),a=S.att[sub]||{a:0,t:0},p=a.t?Math.round(a.a/a.t*100):null,ex=S.exam[sub]||'',m=S.mods[sub]||{},its=items(s);let g='';its.forEach((x,i)=>{if(!i||its[i-1][2]!==x[2])g+=`<div class='gh'>${x[2]}${pgm(s[0],x[2])}</div>`;g+=`<label class='chk'><input type='checkbox' data-in='mod' data-k='${x[0]}' ${m[x[0]]?'checked':''}><span>${esc(x[1])}</span><button class='cf' data-a='cf' data-k='${x[0]}'>${['\u2753','\ud83d\ude15','\ud83d\ude42','\ud83d\udcaa'][S.conf[sub+':'+x[0]]||0]}</button><button class='cf' data-a='er' data-k='${x[0]}'>\u274c${S.err[sub+':'+x[0]]||''}</button>${x[2]==='Mine'?`<button class='x' data-a='deltopic' data-i='${x[0].slice(1)}'>✕</button>`:''}</label>`});
+return `<button class='back' data-a='back'>‹ Subjects</button><h1 style='color:${s[3]}'>${esc(s[1])}</h1><div class='sm mute'>Syllabus PDF: ${PG[s[0]][0]}</div><div class='card'><div class='row'><b>${d} of ${t} topics done</b><b>${t?Math.round(d/t*100):0}%</b></div>${bar(d,t,s[3])}</div>${cfSum(s)}<div class='card'><b>Exam date</b><div class='row'><input type='text' inputmode='numeric' maxlength='10' placeholder='DD-MM-YYYY' data-in='exam' value='${ex?ex.split('-').reverse().join('-'):''}'><b>${ex?dl(daysTo(ex)):''}</b></div></div><div class='card'><b>Attendance</b><div class='big'>${p===null?'--':p+'%'}</div><div class='mute sm ct'>${a.a} present out of ${a.t} classes${p!==null&&p<75?', below 75%':''}</div><div class='row'><button class='btn' data-a='att' data-v='p'>+ Present</button><button class='btn g' data-a='att' data-v='a'>+ Absent</button><button class='btn g' data-a='att' data-v='r'>Reset</button></div></div><div class='card'><b>Topics</b>${g||`<div class='mute sm'>No syllabus topics added. Add your own below.</div>`}<div class='row'><input id='nt' placeholder='Add a topic'><button class='btn' data-a='addtopic'>Add</button></div></div>${aidBox(sub)}${quizBox(sub)}${cardBox(sub)}<div class='card'><b>Notes</b><textarea data-in='note' placeholder='Write notes for this subject'>${esc(S.notes[sub]||'')}</textarea></div>`}
+const T={mode:'focus',len:{focus:25,short:5,long:15},left:1500,run:0,end:0,iv:0};
+const mmss=s=>pad(Math.floor(s/60))+':'+pad(s%60);
+function drawT(){const e=$('tt');if(e){e.textContent=mmss(T.left);$('tb').textContent=T.run?'Pause':'Start'}}
+function setMode(m){T.mode=m;T.run=0;clearInterval(T.iv);T.left=T.len[m]*60;render()}
+function tickT(){if(!T.run)return;T.left=Math.max(0,Math.round((T.end-Date.now())/1000));drawT();if(!T.left){clearInterval(T.iv);T.run=0;if(T.mode==='focus'){const k=iso(new Date());S.focus[k]=(S.focus[k]||0)+T.len.focus;save()}try{navigator.vibrate([300,100,300])}catch(e){}toast(T.mode==='focus'?'Focus done. Take a break!':'Break over. Back to focus.');setMode(T.mode==='focus'?'short':'focus')}}
+document.addEventListener('visibilitychange',tickT);
+function rFocus(){const k=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);k.push([NAMES[(d.getDay()+6)%7],S.focus[iso(d)]||0])}const mx=Math.max(60,...k.map(x=>x[1]));
+return `<h1>Focus timer</h1><div class='tabs'>${[['focus','Focus 25'],['short','Break 5'],['long','Long 15']].map(x=>`<button data-a='tmode' data-v='${x[0]}' class='${T.mode===x[0]?'on':''}'>${x[1]}</button>`).join('')}</div><div class='card'><div class='big' id='tt'>${mmss(T.left)}</div><div class='row'><button class='btn' id='tb' data-a='tgo'>${T.run?'Pause':'Start'}</button><button class='btn g' data-a='treset'>Reset</button></div></div><div class='card'><b>Today: ${S.focus[iso(new Date())]||0} min focused</b><div class='chart'>${k.map(x=>`<div><i style='height:${x[1]/mx*70}px'></i><small>${x[0]}</small></div>`).join('')}</div></div>`}
+function rTasks(){const o={H:0,M:1,L:2},ts=[...S.tasks].sort((a,b)=>a.done-b.done||o[a.p]-o[b.p]||(a.due||'9').localeCompare(b.due||'9'));
+return `<h1>Hell-hound To-Do</h1><div class='card'><input id='tx' placeholder='Add a new task...'><div class='row'><input type='text' inputmode='numeric' maxlength='10' placeholder='Due DD-MM-YYYY' id='td'><select id='tp'><option value='H'>High</option><option value='M' selected>Medium</option><option value='L'>Low</option></select></div><button class='btn full' data-a='tadd'>Add Task</button></div>${ts.length?'':`<div class='mute ct'>No tasks yet. Add your first one.</div>`}${ts.map(x=>{const dd=x.due?daysTo(x.due):null;return `<div class='card task ${x.done?'dn':''} p${x.p}'><div><b>${esc(x.t)}</b><div class='sm ${dd!==null&&dd<0&&!x.done?'red':'mute'}'>${{H:'High',M:'Medium',L:'Low'}[x.p]} priority${dd===null?'':dd<0?', overdue by '+(-dd)+' d':dd===0?', due today':dd===1?', due tomorrow':', due in '+dd+' days'}</div></div><div class='acts'><button class='btn sm' data-a='tdone' data-id='${x.id}'>${x.done?'Undo':'Done'}</button><button class='btn g sm' data-a='tdel' data-id='${x.id}'>Delete</button></div></div>`}).join('')}`}
+function rMore(){return `<h1>More</h1><div class='card'><b>Theme</b><div class='tabs'>${['dark','light','auto'].map(x=>`<button data-a='theme' data-v='${x}' class='${S.theme===x?'on':''}'>${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div></div><div class='card'><b>Reminders</b><div class='mute sm'>${window.Android?'Get a notification before each study block and workout. Timing can be a few minutes off, and battery saver may delay it.':'Reminders work in the Android app.'}</div><label class='late'><input type='checkbox' data-in='rem' ${S.rem.on?'checked':''}> Remind me</label><div class='row'><span>Minutes before</span><select data-in='lead'>${[5,10,15,30].map(x=>`<option ${S.rem.lead===x?'selected':''}>${x}</option>`).join('')}</select></div><button class='btn g full' data-a='notif'>Allow notifications</button></div><div class='card'><b>Backup</b><div class='mute sm'>Save your data before changing phones. Share it to yourself, then paste it below to restore.</div><div class='row'><button class='btn' data-a='share'>Share backup</button><button class='btn g' data-a='copy'>Copy</button></div><textarea id='bk' placeholder='Paste a backup here'></textarea><button class='btn g full' data-a='restore'>Restore from box</button></div>`}
+function reviewNext(){const r=[];SUBS.forEach(s=>items(s).forEach(x=>{const k=s[0]+':'+x[0],c=S.conf[k]||0,e=S.err[k]||0,dn=(S.mods[s[0]]||{})[x[0]];if(!c&&!e&&!dn)return;const dy=S.rv[k]?-daysTo(S.rv[k]):7;r.push([(c?3-c:1.5)*2+e*1.5+Math.min(dy,14)*.3,s,x[1]])}));return r.filter(x=>x[0]>=3).sort((a,b)=>b[0]-a[0]).slice(0,3)}
+function rvCard(){const r=reviewNext();return `<div class='card'><b>Review next</b>${r.length?r.map(x=>`<div class='row tap' data-a='go' data-id='${x[1][0]}'><span>${esc(x[2])}</span><span class='mute sm'>${esc(x[1][1])}</span></div>`).join(''):`<div class='mute sm'>Rate topics with the face button inside a subject. Weak ones show up here.</div>`}</div>`}
+function cfSum(s){const c=[0,0,0,0];let er=0;items(s).forEach(x=>{c[S.conf[s[0]+':'+x[0]]||0]++;er+=S.err[s[0]+':'+x[0]]||0});return `<div class='card'><b>Confidence</b><div class='sm mute'>\ud83d\udcaa ${c[3]} strong, \ud83d\ude42 ${c[2]} ok, \ud83d\ude15 ${c[1]} shaky, \u2753 ${c[0]} not rated. \u274c ${er} mistakes logged.</div></div>`}
+const INT=[1,3,7,14,30],addDays=n=>{const d=new Date();d.setDate(d.getDate()+n);return iso(d)},dueCards=()=>S.cards.filter(c=>c.due<=iso(new Date())).sort((a,b)=>a.box-b.box);
+let R={q:[],i:0,show:0,hint:0,retried:{}};
+function startRev(){R={q:dueCards().map(c=>c.id),i:0,show:0,hint:0,retried:{}};tab='rev';sub=0}
+function rRev(){const c=S.cards.find(x=>x.id===R.q[R.i]),bk=`<button class='back' data-a='back'>\u2039 Back</button>`;if(!c)return bk+`<h1>All caught up</h1><div class='card ct'>No cards due. Nice work!</div>`;const s=SUBS.find(x=>x[0]===c.sid);return bk+`<h1>Review</h1><div class='sm mute'>${R.i+1} of ${R.q.length}, ${esc(s[1])}</div><div class='card'><div class='mute sm'>Question</div><div class='w2'>${esc(c.q)}</div>${R.hint&&c.h?`<div class='sm mute'>Hint: ${esc(c.h)}</div>`:''}${R.show?`<hr><div class='mute sm'>Answer</div><div class='w2'>${esc(c.a)}</div>`:''}</div>${R.show?`<div class='row'><button class='btn g' data-a='rate' data-v='0'>Again</button><button class='btn' data-a='rate' data-v='1'>Got it</button></div>`:`<div class='row'>${c.h&&!R.hint?`<button class='btn g' data-a='hint'>Hint</button>`:''}<button class='btn' data-a='showa'>Show answer</button></div>`}`}
+function cardBox(id){const l=S.cards.filter(c=>c.sid===id);return `<div class='card'><b>Flashcards (${l.length})</b>${l.map(c=>`<div class='row sm'><span>${esc(c.q)}</span><button class='x' data-a='cdel' data-id='${c.id}'>\u2715</button></div>`).join('')}<input id='cq' placeholder='Question'><input id='ca' placeholder='Answer'><input id='ch' placeholder='Hint (optional)'><button class='btn full' data-a='cadd'>Add card</button></div>`}
+function planHTML(){const cap=Math.max(1,Math.floor(S.hrs*60/45)),q=[];exams().forEach(x=>{const m=S.mods[x[0][0]]||{};items(x[0]).forEach(t=>{if(!m[t[0]])q.push({d:x[1],s:x[0][1],t:t[1]})})});
+if(!q.length)return `<div class='card'><b>Revision plan</b><div class='mute sm'>Set exam dates inside subjects. Topics you have not ticked appear here as a day-by-day plan.</div></div>`;
+const days=[];for(let i=0;i<7;i++){const a=[];while(a.length<cap){const j=q.findIndex(x=>x.d>i);if(j<0)break;a.push(q.splice(j,1)[0])}days.push(a)}
+return `<div class='card'><b>Revision plan</b><div class='row sm'><span>Study hours a day</span><select data-in='hrs' style='width:80px'>${[1,2,3,4,5].map(x=>`<option ${S.hrs===x?'selected':''}>${x}</option>`).join('')}</select></div>${days.map((a,i)=>`<div class='gh'>${i?dl(i):'Today'}</div>${a.length?a.map(x=>`<div class='sm'>${esc(x.s)}: ${esc(x.t)}</div>`).join(''):`<div class='sm mute'>Free</div>`}`).join('')}${q.length?`<div class='sm mute'>${q.length} more topics after this week</div>`:''}</div>`}
+const shuf=a=>a.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+let Q={q:[],i:0,sel:-1,show:0,ok:0,o:{}};
+function startQz(id){Q={q:shuf(S.qz.filter(x=>x.sid===id)).sort((a,b)=>(b.w||0)-(a.w||0)).map(x=>x.id),i:0,sel:-1,show:0,ok:0,o:{}};tab='quiz';sub=0}
+function rQz(){const bk=`<button class='back' data-a='back'>\u2039 Back</button>`,q=S.qz.find(x=>x.id===Q.q[Q.i]);if(!q)return bk+`<h1>Quiz done</h1><div class='card ct'><div class='big'>${Q.ok}/${Q.q.length}</div><div class='mute sm'>Questions you miss come first next time.</div></div>`;
+const mc=q.t==='mcq',o=mc?(Q.o[q.id]||(Q.o[q.id]=shuf([q.a,...q.x]))):[];
+return bk+`<h1>Quiz</h1><div class='sm mute'>${Q.i+1} of ${Q.q.length}, ${q.t}</div><div class='card'><div class='w2'>${esc(q.q)}</div>${mc?o.map((t,k)=>`<button class='btn full ${Q.sel<0?'g':t===q.a?'good':Q.sel===k?'bad':'g'}' data-a='pick' data-k='${k}'>${esc(t)}</button>`).join(''):(Q.show?`<hr><div class='mute sm'>Answer</div><div class='w2'>${esc(q.a)}</div>`:'')}</div>${mc?(Q.sel>=0?`<button class='btn full' data-a='qnext'>Next</button>`:''):(Q.show?`<div class='row'><button class='btn g' data-a='grade' data-v='0'>Missed it</button><button class='btn' data-a='grade' data-v='1'>Got it</button></div>`:`<button class='btn full' data-a='showq'>Show answer</button>`)}`}
+function quizBox(id){const l=S.qz.filter(x=>x.sid===id);return `<div class='card'><b>Practice questions (${l.length})</b>${l.length?`<button class='btn full' data-a='qz'>Start quiz</button>`:''}${l.map(x=>`<div class='row sm'><span>${esc(x.q)}</span><button class='x' data-a='qdel' data-id='${x.id}'>\u2715</button></div>`).join('')}<select id='qt'><option value='mcq'>Multiple choice</option><option value='short'>Short answer</option><option value='essay'>Essay</option></select><input id='qq' placeholder='Question'><input id='qa' placeholder='Correct answer'><input id='qx' placeholder='Wrong options for multiple choice, separated by ;'><button class='btn full' data-a='qadd'>Add question</button></div>`}
+function aidBox(id){const a=S.aid[id]||{},l=S.defs[id]||[];return `<div class='card'><b>Exam format</b><select data-in='fmt'>${['Not set','MCQ','Short answer','Essay','Viva','Mixed'].map(x=>`<option ${(S.fmt[id]||'Not set')===x?'selected':''}>${x}</option>`).join('')}</select></div><div class='card'><b>Memory aids</b><div class='mute sm'>One-minute recall: a few sentences you can say out loud</div><textarea style='min-height:70px' data-in='aid' data-f='r'>${esc(a.r||'')}</textarea><div class='mute sm'>Mnemonics and memory hooks</div><textarea style='min-height:70px' data-in='aid' data-f='m'>${esc(a.m||'')}</textarea><div class='mute sm'>Common traps and mistakes</div><textarea style='min-height:70px' data-in='aid' data-f='t'>${esc(a.t||'')}</textarea></div><div class='card'><b>Formulas and definitions (${l.length})</b>${l.map((x,i)=>`<div class='gh'>${esc(x[0])}</div><div class='sm'>${esc(x[1])}</div><div class='sm mute'>${esc(x[2])}</div><button class='x' data-a='ddel' data-i='${i}'>\u2715 Remove</button>`).join('')}<input id='dt' placeholder='Term or formula'><input id='dm' placeholder='Meaning'><input id='du' placeholder='When to use it, with one example'><button class='btn full' data-a='dadd'>Add</button></div>`}
+const PG={cpp:['pages 3 to 4; practical on pages 7 to 13',[3,4]],web:['pages 5 to 7; practical on pages 7 to 13',[5,6]],py:['pages 15 to 18',[17,17]],asm:['pages 20 to 25',[21,23]],wp:['pages 26 to 28',[27,27]],pl:['pages 29 to 31',[29,30]],lead:['from page 34'],evs:['from page 41'],lang:['Hindi from page 47, Marathi from page 52']};
+const pgm=(id,g)=>{const p=PG[id]&&PG[id][1],k=g==='Module 1'?0:g==='Module 2'?1:-1;return p&&k>=0?` (PDF page ${p[k]})`:''};
+const pd=v=>{const n=v.replace(/\D/g,'');if(n.length!==8)return '';const y=n.slice(4),m=n.slice(2,4),d=n.slice(0,2),t=new Date(+y,+m-1,+d);return t.getFullYear()==y&&t.getMonth()==+m-1&&t.getDate()==+d?y+'-'+m+'-'+d:''};
+function render(){const v=sub?rSub():({quiz:rQz,rev:rRev,today:rToday,subjects:rSubjects,focus:rFocus,tasks:rTasks,more:rMore})[tab]();$('m').innerHTML=v;$('nav').innerHTML=[['today','🏠','Today'],['subjects','📚','Subjects'],['focus','⏱','Focus'],['tasks','✅','Tasks'],['more','⚙️','More']].map(x=>`<button data-a='nav' data-v='${x[0]}' class='${tab===x[0]&&!sub?'on':''}'><b>${x[1]}</b>${x[2]}</button>`).join('')}
+function sync(){if(!window.Android)return;const l=[];if(S.rem.on)for(let d=0;d<7;d++){const sb=SUBJ[d]||[];(d?NORMAL:SUN).forEach((r,n)=>{const p=r.split('|');if(p[1][0]==='s'||p[1]==='w'){let t=p[2];if(p[1]==='s1')t='Study: '+sb[0];if(p[1]==='s2')t='Study: '+sb[1];l.push({id:(d+1)*100+n,dow:d+1,min:mins(p[0].split('-')[0])-S.rem.lead,title:t,body:'Starts in '+S.rem.lead+' min'})}})}Android.setReminders(JSON.stringify(l))}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(!t)return;const d=t.dataset,a=d.a;let top=0;
+if(a==='nav'){sub=0;tab=d.v;top=1}else if(a==='day')sel=+d.i;else if(a==='sub'){sub=d.id;top=1}else if(a==='back'){sub=0;top=1;if(tab==='rev')tab='today';if(tab==='quiz')tab='subjects'}
+else if(a==='att'){const x=S.att[sub]||(S.att[sub]={a:0,t:0});if(d.v==='p'){x.a++;x.t++}else if(d.v==='a')x.t++;else{x.a=0;x.t=0}}
+else if(a==='addtopic'){const v=$('nt').value.trim();if(!v)return;(S.topics[sub]=S.topics[sub]||[]).push(v)}
+else if(a==='deltopic'){S.topics[sub].splice(+d.i,1);const m=S.mods[sub]||{};Object.keys(m).forEach(k=>{if(k[0]==='c')delete m[k]})}
+else if(a==='tmode'){setMode(d.v);return}
+else if(a==='tgo'){if(T.run){T.run=0;clearInterval(T.iv)}else{T.run=1;T.end=Date.now()+T.left*1000;T.iv=setInterval(tickT,500)}drawT();return}
+else if(a==='treset'){setMode(T.mode);return}
+else if(a==='tadd'){const v=$('tx').value.trim();if(!v){$('tx').placeholder='Write something first!';return}S.tasks.push({id:Date.now(),t:v,due:pd($('td').value),p:$('tp').value,done:0})}
+else if(a==='tdone'){const k=S.tasks.find(x=>x.id==d.id);k.done=k.done?0:1}
+else if(a==='tdel')S.tasks=S.tasks.filter(x=>x.id!=d.id);
+else if(a==='cf'){const k=sub+':'+d.k;S.conf[k]=((S.conf[k]||0)+1)%4;S.rv[k]=iso(new Date())}else if(a==='er'){const k=sub+':'+d.k;S.err[k]=((S.err[k]||0)+1)%6;S.rv[k]=iso(new Date())}else if(a==='go'){sub=d.id;top=1}else if(a==='cadd'){const q=$('cq').value.trim(),an=$('ca').value.trim();if(!q||!an){toast('Add a question and an answer');return}S.cards.push({id:Date.now(),sid:sub,q:q,a:an,h:$('ch').value.trim(),box:0,due:iso(new Date())})}
+else if(a==='cdel')S.cards=S.cards.filter(c=>c.id!=d.id);
+else if(a==='rev'){startRev();top=1}
+else if(a==='showa')R.show=1;
+else if(a==='hint')R.hint=1;
+else if(a==='rate'){const c=S.cards.find(x=>x.id===R.q[R.i]);if(d.v==='1'){c.due=addDays(INT[c.box]);c.box=Math.min(c.box+1,4)}else{c.box=0;c.due=addDays(1);if(!R.retried[c.id]){R.retried[c.id]=1;R.q.push(c.id)}}R.i++;R.show=0;R.hint=0}
+else if(a==='qadd'){const t=$('qt').value,q=$('qq').value.trim(),an=$('qa').value.trim(),x=$('qx').value.split(';').map(s=>s.trim()).filter(Boolean);if(!q||!an||(t==='mcq'&&!x.length)){toast('Fill in the question, answer and wrong options');return}S.qz.push({id:Date.now(),sid:sub,t:t,q:q,a:an,x:x})}
+else if(a==='qdel')S.qz=S.qz.filter(x=>x.id!=d.id);
+else if(a==='qz'){startQz(sub);top=1}
+else if(a==='pick'&&Q.sel<0){Q.sel=+d.k;const q=S.qz.find(x=>x.id===Q.q[Q.i]);if(Q.o[q.id][Q.sel]===q.a)Q.ok++;else q.w=(q.w||0)+1}
+else if(a==='qnext'){Q.i++;Q.sel=-1}
+else if(a==='showq')Q.show=1;
+else if(a==='grade'){const q=S.qz.find(x=>x.id===Q.q[Q.i]);if(d.v==='1')Q.ok++;else q.w=(q.w||0)+1;Q.i++;Q.show=0}
+else if(a==='dadd'){const t=$('dt').value.trim(),m=$('dm').value.trim();if(!t||!m){toast('Add a term and its meaning');return}(S.defs[sub]=S.defs[sub]||[]).push([t,m,$('du').value.trim()])}
+else if(a==='ddel')S.defs[sub].splice(+d.i,1);
+else if(a==='theme'){S.theme=d.v;theme()}
+else if(a==='notif'){if(window.Android)Android.requestNotifications();return}
+else if(a==='share'){const j=JSON.stringify(S);if(window.Android)Android.share(j);else{$('bk').value=j}return}
+else if(a==='copy'){const b=$('bk');b.value=JSON.stringify(S);b.select();try{document.execCommand('copy');toast('Copied. Paste it somewhere safe.')}catch(x){}return}
+else if(a==='restore'){try{const o=JSON.parse($('bk').value);if(!o||!o.done)throw 0;S=o;fix();theme();sync();toast('Backup restored')}catch(x){toast('That backup is not valid');return}}
+save();render();if(top)window.scrollTo(0,0)});
+function onIn(e){const t=e.target,i=t.dataset.in;if(!i)return;
+if(i==='tick'){const id=t.dataset.id,k=id.split(':')[0];if(t.checked)S.done[id]=1;else delete S.done[id];if(t.dataset.w){if(t.checked)S.wk[k]=1;else delete S.wk[k]}}
+else if(i==='late'){const k=iso(dateOf(sel));if(t.checked)S.late[k]=1;else delete S.late[k]}
+else if(i==='mod'){const m=S.mods[sub]=S.mods[sub]||{};if(t.checked)m[t.dataset.k]=1;else delete m[t.dataset.k]}
+else if(i==='exam'){const v=pd(t.value);if(t.value.trim()&&!v){toast('Use the date format DD-MM-YYYY');return}if(v)S.exam[sub]=v;else delete S.exam[sub]}
+else if(i==='aid'){(S.aid[sub]=S.aid[sub]||{})[t.dataset.f]=t.value;save();return}
+else if(i==='fmt')S.fmt[sub]=t.value;
+else if(i==='note'){S.notes[sub]=t.value;save();return}
+else if(i==='rem'){S.rem.on=t.checked;if(t.checked&&window.Android)Android.requestNotifications();sync()}
+else if(i==='hrs')S.hrs=+t.value;
+else if(i==='lead'){S.rem.lead=+t.value;sync()}
+save();render()}
+document.addEventListener('change',onIn);
+document.addEventListener('input',e=>{if(['note','aid'].includes(e.target.dataset.in))onIn(e)});
+window.onBack=()=>{if(sub){sub=0;render();return true}if(tab!=='today'){tab='today';render();return true}return false};
+setInterval(()=>{const a=document.activeElement.tagName;if(tab==='today'&&!sub&&a!=='INPUT'&&a!=='TEXTAREA')render()},30000);
+render();sync();
+</script>
+</body>
+</html>
+
+===== FILE: app/src/main/java/com/studyplanner/app/BootReceiver.java =====
+package com.studyplanner.app;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+
+public class BootReceiver extends BroadcastReceiver {
+    @Override
+    public void onReceive(Context c, Intent i) {
+        Reminders.schedule(c);
+    }
+}
+
+===== FILE: app/src/main/java/com/studyplanner/app/MainActivity.java =====
+package com.studyplanner.app;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.os.Build;
+import android.os.Bundle;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+
+public class MainActivity extends Activity {
+    private WebView web;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getWindow().setStatusBarColor(Color.BLACK);
+        getWindow().setNavigationBarColor(Color.BLACK);
+        web = new WebView(this);
+        web.setBackgroundColor(Color.BLACK);
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setAllowFileAccess(true);
+        web.addJavascriptInterface(new Bridge(), "Android");
+        web.setWebViewClient(new WebViewClient());
+        setContentView(web);
+        web.loadUrl("file:///android_asset/index.html");
+    }
+
+    class Bridge {
+        @JavascriptInterface
+        public void setReminders(String json) {
+            getSharedPreferences("rem", MODE_PRIVATE).edit().putString("json", json).apply();
+            Reminders.schedule(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void requestNotifications() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void share(String text) {
+            runOnUiThread(() -> {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_TEXT, text);
+                startActivity(Intent.createChooser(i, "Save backup"));
+            });
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        web.evaluateJavascript("(window.onBack?window.onBack():false)", v -> {
+            if (!"true".equals(v)) finish();
+        });
+    }
+}
+
+===== FILE: app/src/main/java/com/studyplanner/app/ReminderReceiver.java =====
+package com.studyplanner.app;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
+
+public class ReminderReceiver extends BroadcastReceiver {
+    @Override
+    public void onReceive(Context c, Intent in) {
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        String ch = "study";
+        if (Build.VERSION.SDK_INT >= 26) {
+            nm.createNotificationChannel(new NotificationChannel(ch, "Study reminders", NotificationManager.IMPORTANCE_DEFAULT));
+        }
+        Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, ch) : new Notification.Builder(c);
+        PendingIntent open = PendingIntent.getActivity(c, 0, new Intent(c, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
+        b.setSmallIcon(android.R.drawable.ic_popup_reminder)
+                .setContentTitle(in.getStringExtra("title"))
+                .setContentText(in.getStringExtra("body"))
+                .setContentIntent(open)
+                .setAutoCancel(true);
+        nm.notify(in.getIntExtra("id", 0), b.build());
+    }
+}
+
+===== FILE: app/src/main/java/com/studyplanner/app/Reminders.java =====
+package com.studyplanner.app;
+
+import android.app.AlarmManager;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.util.Calendar;
+
+public class Reminders {
+    static PendingIntent pi(Context c, int id, String title, String body) {
+        Intent i = new Intent(c, ReminderReceiver.class);
+        i.putExtra("title", title);
+        i.putExtra("body", body);
+        i.putExtra("id", id);
+        return PendingIntent.getBroadcast(c, id, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    static void schedule(Context c) {
+        AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        SharedPreferences sp = c.getSharedPreferences("rem", Context.MODE_PRIVATE);
+        String old = sp.getString("ids", "");
+        if (!old.isEmpty()) {
+            for (String s : old.split(",")) {
+                try { am.cancel(pi(c, Integer.parseInt(s), "", "")); } catch (Exception e) { }
+            }
+        }
+        StringBuilder ids = new StringBuilder();
+        try {
+            JSONArray arr = new JSONArray(sp.getString("json", "[]"));
+            for (int k = 0; k < arr.length(); k++) {
+                JSONObject o = arr.getJSONObject(k);
+                int id = o.getInt("id");
+                int min = o.getInt("min");
+                Calendar cal = Calendar.getInstance();
+                cal.set(Calendar.DAY_OF_WEEK, o.getInt("dow"));
+                cal.set(Calendar.HOUR_OF_DAY, min / 60);
+                cal.set(Calendar.MINUTE, min % 60);
+                cal.set(Calendar.SECOND, 0);
+                cal.set(Calendar.MILLISECOND, 0);
+                if (cal.getTimeInMillis() <= System.currentTimeMillis()) cal.add(Calendar.DAY_OF_YEAR, 7);
+                am.setRepeating(AlarmManager.RTC_WAKEUP, cal.getTimeInMillis(), AlarmManager.INTERVAL_DAY * 7, pi(c, id, o.getString("title"), o.getString("body")));
+                if (ids.length() > 0) ids.append(",");
+                ids.append(id);
+            }
+        } catch (Exception e) { }
+        sp.edit().putString("ids", ids.toString()).apply();
+    }
+}
+
+===== FILE: app/src/main/res/mipmap-xxxhdpi/ic_launcher.png (binary, not included) =====
+
+===== FILE: build.gradle =====
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}
+
+===== FILE: gradle.properties =====
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+
+===== FILE: settings.gradle =====
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "StudyPlanner"
+include ':app'
